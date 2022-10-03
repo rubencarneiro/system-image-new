@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2013 Canonical Ltd.
+# Author: Stéphane Graber <stgraber@ubuntu.com>
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; version 3 of the License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+import os
+import sys
+sys.path.insert(0, os.path.join(sys.path[0], os.pardir, "lib"))
+
+from systemimage import config, tools, tree
+
+import argparse
+import logging
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="set phased percentage")
+    parser.add_argument("channel", metavar="CHANNEL")
+    parser.add_argument("device", metavar="DEVICE")
+    parser.add_argument("version", metavar="VERSION", type=int)
+    parser.add_argument("percentage", metavar="PERCENTAGE", type=int)
+    parser.add_argument("--verbose", "-v", action="count")
+
+    args = parser.parse_args()
+
+    # Setup logging
+    formatter = logging.Formatter(
+        "%(asctime)s %(levelname)s %(message)s")
+
+    levels = {1: logging.ERROR,
+              2: logging.WARNING,
+              3: logging.INFO,
+              4: logging.DEBUG}
+
+    if args.verbose > 0:
+        stdoutlogger = logging.StreamHandler(sys.stdout)
+        stdoutlogger.setFormatter(formatter)
+        logging.root.setLevel(levels[min(4, args.verbose)])
+        logging.root.addHandler(stdoutlogger)
+    else:
+        logging.root.addHandler(logging.NullHandler())
+
+    # Load the configuration
+    conf = config.Config()
+
+    # Load the tree
+    pub = tree.Tree(conf)
+
+    # Do some checks
+    channels = pub.list_channels()
+    if args.channel not in channels:
+        parser.error("Invalid channel: %s" % args.channel)
+
+    if args.device not in channels[args.channel]['devices']:
+        parser.error("Invalid device for source channel: %s" %
+                     args.device)
+
+    if args.percentage < 0 or args.percentage > 100:
+        parser.error("Invalid value: %s" % args.percentage)
+
+    if "alias" in channels[args.channel] and \
+            channels[args.channel]['alias'] != args.channel:
+        parser.error("Channel is an alias.")
+
+    if "redirect" in channels[args.channel]:
+        parser.error("Channel is a redirect.")
+
+    target_device = channels[args.channel]['devices'][args.device]
+    if "redirect" in target_device:
+        parser.error("Target device is a redirect. Use original channel "
+                     "%s instead." % target_device['redirect'])
+
+    dev = pub.get_device(args.channel, args.device)
+    logging.info("Setting phased-percentage of '%s' to %s%%" %
+                 (args.version, args.percentage))
+    dev.set_phased_percentage(args.version, args.percentage)
+
+    # Sync all channel aliases
+    logging.info("Syncing any existing alias")
+    pub.sync_aliases(args.channel)
+
+    # Sync the mirrors
+    logging.info("Triggering a mirror sync")
+    tools.sync_mirrors(conf)

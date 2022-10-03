@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2013 Canonical Ltd.
+# Author: Stéphane Graber <stgraber@ubuntu.com>
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; version 3 of the License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+import os
+import shutil
+import datetime
+
+import sys
+sys.path.insert(0, 'lib')
+
+from systemimage import gpg
+
+target_dir = "tools/keys/"
+if not os.path.exists(target_dir):
+    raise Exception("Missing tools/keys directory")
+
+keys = (("archive-master", "1 Archive Master Key",
+         "rubencarneiro01@gmail.com", datetime.timedelta(seconds=0), "rsa4096"),
+        ("image-master", "1 Image Master Key",
+         "rubencarneiro01@gmail.com", datetime.timedelta(seconds=0), "rsa4096"),
+        ("image-signing", "Sagetea system-image Signing Key",
+         "rubencarneiro01@gmail.com", datetime.timedelta(days=730), "rsa2048"),
+        ("device-signing", "1 Device Signing Key",
+         "rubencarneiro01@gmail.com", datetime.timedelta(days=730), "rsa2048"))
+
+for key_name, key_description, key_email, key_expiry, key_algorithm in keys:
+    key_dir = "%s/%s/" % (target_dir, key_name)
+    if os.path.exists(key_dir):
+        shutil.rmtree(key_dir)
+    os.makedirs(key_dir, mode=0o700)
+
+    uid = gpg.generate_signing_key(key_dir, key_description, key_email,
+                                   key_expiry, algorithm=key_algorithm)
+
+    print("%s <%s>" % (uid.name, uid.email))
+
+# All done, let's mark it as done
+open("tools/keys/generated", "w+").close()
